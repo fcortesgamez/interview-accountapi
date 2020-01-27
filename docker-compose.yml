@@ -1,0 +1,89 @@
+version: '3'
+
+networks:
+  testsnetwork:
+    driver: bridge
+
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: ./client/Dockerfile
+    volumes:
+      - $PWD:/go/src/github.com/fcortesgamez/interview-accountapi
+    depends_on:
+      - pactbroker
+    networks:
+      - testsnetwork
+    command: sh ./test.sh
+
+  pactbroker:
+    image: dius/pact-broker
+    depends_on:
+      - postgresql
+    ports:
+      - 8081:80
+    expose:
+      - 80
+    environment:
+      PACT_BROKER_BASIC_AUTH_USERNAME: pact_accountapi
+      PACT_BROKER_BASIC_AUTH_PASSWORD: pact_accountapi
+      PACT_BROKER_DATABASE_USERNAME: root
+      PACT_BROKER_DATABASE_PASSWORD: password
+      PACT_BROKER_DATABASE_HOST: postgresql
+      PACT_BROKER_DATABASE_NAME: postgres
+    networks:
+      - testsnetwork
+
+  accountapi:
+    image: form3tech/interview-accountapi:v1.0.0-4-g63cf8434
+    restart: on-failure
+    depends_on:
+      - postgresql
+      - vault
+    environment:
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=8fb95528-57c6-422e-9722-d2147bcba8ed
+      - PSQL_USER=root
+      - PSQL_PASSWORD=password
+      - PSQL_HOST=postgresql
+      - PSQL_PORT=5432
+      - STACK_NAME=f3-interview-accountapi
+      - DATABASE-HOST=postgresql
+      - DATABASE-SSL-MODE=disable
+      - DATABASE-USERNAME=interview_accountapi_user
+      - DATABASE-PASSWORD=123
+    ports:
+      - 8080:8080
+    expose:
+      - 8080
+    networks:
+      - testsnetwork
+
+  postgresql:
+    image: postgres:9.5-alpine
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "postgres", "-U", "root" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    ports:
+      - "5432:5432"
+    expose:
+      - 5432
+    restart: always
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - ./scripts/db:/docker-entrypoint-initdb.d/
+    networks:
+      - testsnetwork
+
+  vault:
+    image: vault:0.9.3
+    environment:
+      - SKIP_SETCAP=1
+      - VAULT_DEV_ROOT_TOKEN_ID=8fb95528-57c6-422e-9722-d2147bcba8ed
+    networks:
+      - testsnetwork
